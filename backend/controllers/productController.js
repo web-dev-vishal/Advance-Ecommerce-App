@@ -33,12 +33,22 @@ const getProductById = async (req, res) => {
   }
 };
 
+// Helper: upload buffer to Cloudinary
+const uploadToCloudinary = (buffer) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream({ folder: 'shopnest' }, (err, result) => {
+      if (err) return reject(err);
+      resolve(result);
+    });
+    stream.end(buffer);
+  });
+
 const createProduct = async (req, res) => {
   try {
     const { name, description, price, category, stock } = req.body;
     let imageUrl = '';
     if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path);
+      const result = await uploadToCloudinary(req.file.buffer);
       imageUrl = result.secure_url;
     }
     const product = new Product({ name, description, price, category, stock, imageUrl });
@@ -65,7 +75,7 @@ const updateProduct = async (req, res) => {
       product.stock = stock || product.stock;
 
       if (req.file) {
-        const result = await cloudinary.uploader.upload(req.file.path);
+        const result = await uploadToCloudinary(req.file.buffer);
         product.imageUrl = result.secure_url;
       }
       const updatedProduct = await product.save();

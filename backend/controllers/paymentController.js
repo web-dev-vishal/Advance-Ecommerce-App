@@ -19,12 +19,12 @@ const createOrder = async (req, res) => {
 
     const options = { amount: amountInPaise, currency: 'INR' };
     const order = await instance.orders.create(options);
-    if (!order) return res.status(500).send('Some error occured');
+    if (!order) return res.status(500).json({ message: 'Failed to create Razorpay order' });
 
     await setCache(dedupKey, order, 600);
     res.json(order);
   } catch (error) {
-    res.status(500).send(error);
+    res.status(500).json({ message: 'Payment order creation failed' });
   }
 };
 
@@ -49,7 +49,7 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Invalid signature sent!' });
     }
   } catch (error) {
-    res.status(500).send(error);
+    res.status(500).json({ message: 'Payment verification failed' });
   }
 };
 
