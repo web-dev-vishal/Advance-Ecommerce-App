@@ -1,76 +1,230 @@
 <div align="center">
   <img src="https://cdn-icons-png.flaticon.com/512/3514/3514491.png" alt="ShopNest Logo" width="80" />
-  <h1>ShopNest - Full-Stack MERN E-Commerce App</h1>
-  <p>A professionally engineered, full-stack E-commerce platform built strictly using modern standard React (CRA) on the frontend and Express/MongoDB on the backend.</p>
+  <h1>ShopNest — Backend API</h1>
+  <p>A production-ready Node.js/Express e-commerce REST API with MongoDB, Redis caching, RabbitMQ async messaging, and full Docker support.</p>
 </div>
 
 ---
 
-## 🛠 Tech Stack Details
+## Tech Stack
 
-- **Frontend:** Pure React.js (`react-scripts`), Redux Toolkit (for Cart state management), AuthContext API (for JWT user sessions).
-- **Backend:** Node.js, Express.js architecture mapped with middleware-based routing.
-- **Database:** MongoDB (via Mongoose schemas).
-- **Features:** Unified Admin Dashboard, Direct Cloudinary Content Maps, Personal User Profiles matching mapped Order Histories.
-- **Payments:** Razorpay fully implemented (utilize your test metrics or placeholder).
-- **Cloud Storage:** Cloudinary integration for Product image uploading securely via Multer.
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js + Express.js |
+| Database | MongoDB (Mongoose) |
+| Cache / Rate Limiting | Redis (ioredis) |
+| Message Broker | RabbitMQ (amqplib) |
+| Auth | JWT (Bearer tokens) |
+| Payments | Razorpay |
+| Image Uploads | Cloudinary + Multer |
+| Containerisation | Docker + Docker Compose |
 
 ---
 
-## 🚀 Quick Start / Local Development Guide
+## Project Structure
 
-The workspace is configured beautifully using a monorepo-friendly setup with `concurrently`, enabling you to start everything from the very root folder.
+```
+backend/
+├── config/
+│   ├── db.js              # MongoDB connection
+│   ├── redis.js           # Redis client (ioredis)
+│   ├── rabbitmq.js        # RabbitMQ client (amqplib)
+│   └── cloudinary.js      # Cloudinary config
+├── controllers/           # Route handlers
+├── middleware/
+│   ├── authMiddleware.js  # JWT protect
+│   ├── adminMiddleware.js # Admin role guard
+│   └── rateLimiter.js     # Redis sliding-window rate limiter
+├── models/                # Mongoose schemas
+├── routes/                # Express routers
+├── utils/
+│   ├── cache.js           # Redis get/set/del helpers
+│   └── sendEmail.js       # Nodemailer utility
+├── workers/               # RabbitMQ consumers
+│   ├── emailWorker.js             # order.created → confirmation email
+│   ├── welcomeWorker.js           # user.registered → welcome/OTP email
+│   ├── statusNotificationWorker.js # order.updated → status email
+│   ├── lowStockWorker.js          # product.low_stock → admin alert log
+│   ├── paymentAuditWorker.js      # payment.verified → audit log
+│   ├── analyticsInvalidationWorker.js # analytics.invalidate → cache del
+│   └── index.js           # Starts all workers
+├── index.js               # Express app factory (routes, middleware)
+├── server.js              # Entry point (DB + Redis + RabbitMQ + listen)
+└── Dockerfile
+docker-compose.yml
+```
 
-### 1️⃣ Dependencies & Environments
-Make sure you have MongoDB running locally, or map it to a remote database string.
+---
 
-Inside the `backend/` folder, ensure your `.env` looks like this:
+## Quick Start
+
+### Option A — Docker (recommended)
+
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+**1. Copy and fill in your environment file:**
+```bash
+cp backend/.env.example backend/.env
+```
+
+Edit `backend/.env` with your real values (see [Environment Variables](#environment-variables) below).
+
+**2. Start the full stack:**
+```bash
+docker compose up --build
+```
+
+This starts four services:
+- `app` — ShopNest API on port `5000`
+- `mongo` — MongoDB on port `27017`
+- `redis` — Redis on port `6379`
+- `rabbitmq` — RabbitMQ on port `5672`, management UI on `http://localhost:15672`
+
+**3. Seed the database:**
+```bash
+docker compose exec app node seed.js
+```
+
+> Seed admin credentials: `admin@shopnest.com` / `password123`
+
+---
+
+### Option B — Local (without Docker)
+
+Requires MongoDB, Redis, and RabbitMQ running locally.
+
+```bash
+cd backend
+npm install
+node seed.js      # optional — seed sample data
+node server.js
+```
+
+---
+
+## Environment Variables
+
+Create `backend/.env` from `backend/.env.example`:
+
 ```env
 PORT=5000
 NODE_ENV=development
+
+# MongoDB
 MONGO_URI=mongodb://127.0.0.1:27017/shopnest
-JWT_SECRET=super_secret_key
-RAZORPAY_KEY_ID=your_key_id
-RAZORPAY_KEY_SECRET=your_key_secret
+
+# Auth
+JWT_SECRET=your_jwt_secret_key
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# Razorpay
+RAZORPAY_KEY_ID=your_razorpay_key_id
+RAZORPAY_KEY_SECRET=your_razorpay_key_secret
+
+# Email (Gmail)
+GMAIL_USER=your_email@gmail.com
+GMAIL_PASS=your_app_password
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# RabbitMQ
+RABBITMQ_URL=amqp://localhost
 ```
 
-From the **root folder** `shopnest/`, trigger a full install across environments:
-```bash
-npm run build
-```
-
-### 2️⃣ Populate the Database (Seeding)
-Test the platform rapidly featuring beautiful dummy products (Unsplash) and automatic `Admin` role provisioning:
-```bash
-npm run seed
-```
-> **Seed Admin Access:** Email: `admin@shopnest.com` | Password: `password123`
-
-### 3️⃣ Run Servers Start
-Run this single command at the root to bind the Backend (Port 5000) and Frontend (Port 3000) natively:
-```bash
-npm run dev
-```
+> When running via Docker Compose, `REDIS_URL` and `RABBITMQ_URL` are automatically overridden to use the container service names.
 
 ---
 
-## ☁️ 1-Click Deployment (Render Free-Tier Optimized)
+## API Reference
 
-The server codebase features a seamless fallback mechanic leveraging Node `process.env.NODE_ENV === "production"`. When deployed to Render as a singular instance, the Express backend hosts and correctly resolves static routes to `/frontend/build` rendering the whole platform completely free on 1 Node server.
+Base URL: `http://localhost:5000`
 
-1. Publish this repo onto **GitHub**.
-2. Go to [Render Dashboard](https://dashboard.render.com).
-3. Connect Repo -> Create a **Web Service**.
-4. Configure Build Command:
-   `npm run render-build` 
-   *(This cleanly installs API + UI node_modules then generates `react-scripts build`)*
-5. Configure Start Command:
-   `npm start`
-6. Open **Advanced > Environment Variables** and map your `.env` fields heavily defining `NODE_ENV = production`.
-7. Hit **Deploy**. The robust path resolving inside `/backend/server.js` hosts it fluidly!
+All protected routes require: `Authorization: Bearer <token>`
+
+### Auth — `/api/auth`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/` | — | Health check |
+| POST | `/api/auth/register` | — | Register user (rate limited) |
+| POST | `/api/auth/login` | — | Login user (rate limited) |
+| GET | `/api/auth/users` | Admin | Get all users |
+
+### Products — `/api/products`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/api/products` | — | Get all products (cached 300s) |
+| GET | `/api/products/:id` | — | Get product by ID (cached 300s) |
+| POST | `/api/products` | Admin | Create product (multipart/form-data) |
+| PUT | `/api/products/:id` | Admin | Update product |
+| DELETE | `/api/products/:id` | Admin | Delete product |
+
+### Orders — `/api/orders`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/orders` | User | Place an order |
+| GET | `/api/orders/myorders` | User | Get my orders (cached 120s) |
+| GET | `/api/orders` | Admin | Get all orders (cached 60s) |
+| PUT | `/api/orders/:id/status` | Admin | Update order status (`Pending` / `Shipped` / `Delivered` / `Cancelled`) |
+
+### Payment — `/api/payment`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/payment/order` | User | Create Razorpay order (dedup cached 600s) |
+| POST | `/api/payment/verify` | User | Verify Razorpay payment signature |
+
+### Analytics — `/api/analytics`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/api/analytics` | Admin | Get dashboard stats (cached 60s) |
 
 ---
 
-## 📄 Postman Documentations
-This repository includes a fully-scaffolded API testing toolkit: **`ShopNest_Postman_Collection.json`**. 
-Simply Import this file directly into the local Postman IDE. It features variables like `{{token}}` properly mapped to effortlessly check protected admin/user/order payloads. Happy coding!
+## Redis Cache Keys
+
+| Key | TTL | Description |
+|---|---|---|
+| `products:all` | 300s | All products list |
+| `products:{id}` | 300s | Single product |
+| `orders:all` | 60s | All orders (admin) |
+| `orders:user:{userId}` | 120s | Per-user order history |
+| `users:all` | 120s | All users (admin) |
+| `analytics:stats` | 60s | Dashboard stats |
+| `payment:dedup:{userId}:{amount}` | 600s | Razorpay order deduplication |
+| `ratelimit:{ip}` | 900s | Auth rate limit counter |
+
+Redis is optional — if unavailable, all endpoints fall back to MongoDB transparently.
+
+---
+
+## RabbitMQ Queues
+
+| Queue | Publisher | Consumer | Purpose |
+|---|---|---|---|
+| `order.created` | orderController | emailWorker | Order confirmation email |
+| `order.updated` | orderController | statusNotificationWorker | Status change email |
+| `user.registered` | authController | welcomeWorker | Welcome + OTP email |
+| `product.low_stock` | orderController | lowStockWorker | Admin low-stock alert log |
+| `payment.verified` | paymentController | paymentAuditWorker | Payment audit log |
+| `analytics.invalidate` | order/productController | analyticsInvalidationWorker | Invalidate analytics cache |
+
+RabbitMQ is optional — if unavailable, all HTTP responses complete normally and events are silently skipped.
+
+---
+
+## Postman Collection
+
+Import `ShopNest_Postman_Collection.json` into Postman.
+
+Set the `endpoint` collection variable to `http://localhost:5000`. After hitting **Login User**, the `token` variable is automatically saved for all subsequent requests.
+
+Available variables: `endpoint`, `token`, `productId`, `orderId`.

@@ -62,7 +62,7 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
 
 - [ ] 4. Checkpoint — Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Update `productController.js` with caching and event publishing
+- [x] 5. Update `productController.js` with caching and event publishing
   - Import `{ getCache, setCache, delCache }` from `../utils/cache`
   - Import `{ publishMessage }` from `../config/rabbitmq`
   - `getProducts`: check `products:all` cache (TTL 300 s); on miss fetch from MongoDB, set cache, return
@@ -78,7 +78,7 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
     - Tag: `// Feature: docker-redis-rabbitmq-integration, Property 3: Mutation invalidates all related cache keys`
     - **Validates: Requirements 3.3, 4.3, 11.3, 11.4**
 
-- [ ] 6. Update `orderController.js` with caching and event publishing
+- [x] 6. Update `orderController.js` with caching and event publishing
   - Import `{ getCache, setCache, delCache }` from `../utils/cache`
   - Import `{ publishMessage }` from `../config/rabbitmq`
   - Import `Product` model from `../models/Product`
@@ -113,7 +113,7 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
     - Tag: `// Feature: docker-redis-rabbitmq-integration, Property 5: RabbitMQ unavailability never breaks HTTP responses`
     - **Validates: Requirements 5.2, 6.3, 7.2, 10.3**
 
-- [ ] 7. Update `authController.js` with caching and event publishing
+- [x] 7. Update `authController.js` with caching and event publishing
   - Import `{ getCache, setCache, delCache }` from `../utils/cache`
   - Import `{ publishMessage }` from `../config/rabbitmq`
   - Remove the existing inline `sendEmail` call and its import from `registerUser`
@@ -127,12 +127,12 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
     - Tag: `// Feature: docker-redis-rabbitmq-integration, Property 7: Published user.registered message contains all required fields`
     - **Validates: Requirements 17.1, 17.2**
 
-- [ ] 8. Update `analyticsController.js` with caching
+- [x] 8. Update `analyticsController.js` with caching
   - Import `{ getCache, setCache }` from `../utils/cache`
   - `getAdminStats`: check `analytics:stats` cache (TTL 60 s); on miss run all MongoDB aggregations, set cache, return
   - _Requirements: 11.1, 11.2, 11.5, 11.6_
 
-- [ ] 9. Update `paymentController.js` with dedup cache and payment.verified event
+- [x] 9. Update `paymentController.js` with dedup cache and payment.verified event
   - Import `{ getCache, setCache }` from `../utils/cache`
   - Import `{ publishMessage }` from `../config/rabbitmq`
   - `createOrder`: compute key `payment:dedup:{userId}:{amountInPaise}` where `amountInPaise = req.body.amount * 100`; return cached order on hit (TTL 600 s); on miss call Razorpay API, cache result, return
@@ -147,14 +147,14 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
 
 - [ ] 10. Checkpoint — Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Create email and welcome workers
-  - [ ] 11.1 Create `backend/workers/emailWorker.js`
+- [x] 11. Create email and welcome workers
+  - [x] 11.1 Create `backend/workers/emailWorker.js`
     - Import `{ getChannel }` from `../config/rabbitmq` and `sendEmail` from `../utils/sendEmail`
     - Export `start()`: if `getChannel()` is null log warning and return; assert `order.created` queue as `{ durable: true }`; consume with `{ noAck: false }`
     - On message: parse JSON payload `{ orderId, email, name, totalAmount, address }`; call `sendEmail` with subject `'ShopNest - Order Confirmation'` and HTML body matching the original inline template; ack on success, nack (requeue) on failure
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-  - [ ] 11.2 Create `backend/workers/welcomeWorker.js`
+  - [x] 11.2 Create `backend/workers/welcomeWorker.js`
     - Import `{ getChannel }` from `../config/rabbitmq` and `sendEmail` from `../utils/sendEmail`
     - Export `start()`: if `getChannel()` is null log warning and return; assert `user.registered` queue as `{ durable: true }`; consume with `{ noAck: false }`
     - On message: parse JSON payload `{ name, email, otp }`; call `sendEmail` with subject `'Welcome to ShopNest - Your OTP'` and HTML body matching the original inline template; ack on success, nack (requeue) on failure
@@ -166,26 +166,26 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
     - Tag: `// Feature: docker-redis-rabbitmq-integration, Property 13: Email workers send correct content for any message payload`
     - **Validates: Requirements 8.2, 17.6**
 
-- [ ] 12. Create status notification, low stock, payment audit, and analytics invalidation workers
-  - [ ] 12.1 Create `backend/workers/statusNotificationWorker.js`
+- [x] 12. Create status notification, low stock, payment audit, and analytics invalidation workers
+  - [x] 12.1 Create `backend/workers/statusNotificationWorker.js`
     - Import `{ getChannel }` from `../config/rabbitmq`, `sendEmail` from `../utils/sendEmail`, and `User` model from `../models/User`
     - Export `start()`: if `getChannel()` is null log warning and return; assert `order.updated` queue as `{ durable: true }`; consume with `{ noAck: false }`
     - On message: parse `{ orderId, status, userId }`; look up user by `userId`; call `sendEmail` with status update subject and body; ack on success, nack (requeue) on failure
     - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6_
 
-  - [ ] 12.2 Create `backend/workers/lowStockWorker.js`
+  - [x] 12.2 Create `backend/workers/lowStockWorker.js`
     - Import `{ getChannel }` from `../config/rabbitmq`
     - Export `start()`: if `getChannel()` is null log warning and return; assert `product.low_stock` queue as `{ durable: true }`; consume with `{ noAck: false }`
     - On message: parse `{ productId, name, stock }`; log structured warning `[LowStock] { productId, name, stock }`; ack
     - _Requirements: 19.5, 19.6, 19.7_
 
-  - [ ] 12.3 Create `backend/workers/paymentAuditWorker.js`
+  - [x] 12.3 Create `backend/workers/paymentAuditWorker.js`
     - Import `{ getChannel }` from `../config/rabbitmq`
     - Export `start()`: if `getChannel()` is null log warning and return; assert `payment.verified` queue as `{ durable: true }`; consume with `{ noAck: false }`
     - On message: parse `{ razorpay_order_id, razorpay_payment_id, timestamp }`; log structured audit entry `[PaymentAudit] { orderId, paymentId, timestamp }`; ack
     - _Requirements: 20.4, 20.5, 20.6_
 
-  - [ ] 12.4 Create `backend/workers/analyticsInvalidationWorker.js`
+  - [x] 12.4 Create `backend/workers/analyticsInvalidationWorker.js`
     - Import `{ getChannel }` from `../config/rabbitmq` and `{ delCache }` from `../utils/cache`
     - Export `start()`: if `getChannel()` is null log warning and return; assert `analytics.invalidate` queue as `{ durable: true }`; consume with `{ noAck: false }`
     - On message: call `delCache('analytics:stats')`; ack (even if Redis unavailable — log warning per error handling spec)
@@ -197,18 +197,18 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
     - Tag: `// Feature: docker-redis-rabbitmq-integration, Property 12: Analytics invalidation worker deletes analytics:stats on every message`
     - **Validates: Requirements 21.6, 21.7**
 
-- [ ] 13. Create `backend/workers/index.js`
+- [x] 13. Create `backend/workers/index.js`
   - Import all six worker modules (`emailWorker`, `welcomeWorker`, `statusNotificationWorker`, `lowStockWorker`, `paymentAuditWorker`, `analyticsInvalidationWorker`)
   - Export a single `startWorkers()` function that calls `start()` on each worker
   - _Requirements: 8.1, 17.5, 18.1, 19.5, 20.4, 21.5_
 
-- [ ] 14. Update `backend/server.js` to initialise Redis, RabbitMQ, and workers
+- [x] 14. Update `backend/server.js` to initialise Redis, RabbitMQ, and workers
   - Add imports for `connectRedis` from `./config/redis`, `connectRabbitMQ` from `./config/rabbitmq`, and `startWorkers` from `./workers`
   - After `connectDB()`, add an async IIFE that awaits `connectRedis()`, awaits `connectRabbitMQ()`, then calls `startWorkers()`
   - Keep all existing middleware and route registrations unchanged
   - _Requirements: 2.1, 5.1, 8.1, 17.5, 18.1, 19.5, 20.4, 21.5_
 
-- [ ] 15. Apply rate limiter middleware to auth routes
+- [x] 15. Apply rate limiter middleware to auth routes
   - In `backend/routes/authRoutes.js`, import `rateLimiter` from `../middleware/rateLimiter`
   - Apply `rateLimiter` as middleware to `POST /register` and `POST /login` routes only
   - Leave `GET /users` unchanged
@@ -216,12 +216,12 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
 
 - [ ] 16. Checkpoint — Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 17. Update `backend/.env.example` and create Dockerfile
-  - [ ] 17.1 Update `backend/.env.example`
+- [x] 17. Update `backend/.env.example` and create Dockerfile
+  - [x] 17.1 Update `backend/.env.example`
     - Append `REDIS_URL=redis://localhost:6379` and `RABBITMQ_URL=amqp://localhost` with inline comments
     - _Requirements: 9.3_
 
-  - [ ] 17.2 Create `backend/Dockerfile`
+  - [x] 17.2 Create `backend/Dockerfile`
     - Use `FROM node:lts-alpine`
     - `WORKDIR /app`
     - `COPY package*.json ./`
@@ -231,7 +231,7 @@ Incrementally wire Redis caching, RabbitMQ messaging, background workers, and Do
     - `CMD ["node", "server.js"]`
     - _Requirements: 1.8_
 
-- [ ] 18. Create `docker-compose.yml` at project root
+- [x] 18. Create `docker-compose.yml` at project root
   - Define four services: `app`, `mongo`, `redis`, `rabbitmq`
   - `app`: build from `./backend`, port `5000:5000`, `env_file: ./backend/.env`, environment overrides `REDIS_URL=redis://redis:6379` and `RABBITMQ_URL=amqp://rabbitmq`, `depends_on` with `condition: service_healthy` for all three dependencies
   - `mongo`: image `mongo:7`, named volume `mongo_data:/data/db`, healthcheck using `mongosh --eval "db.adminCommand('ping')"`

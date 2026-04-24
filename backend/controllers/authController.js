@@ -1,7 +1,8 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const sendEmail = require('../utils/sendEmail');
+const { getCache, setCache, delCache } = require('../utils/cache');
+const { publishMessage } = require('../config/rabbitmq');
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -10,7 +11,7 @@ const generateToken = (id) => {
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    
+
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
 
@@ -19,22 +20,12 @@ const registerUser = async (req, res) => {
 
     const user = await User.create({ name, email, password: hashedPassword });
     if (user) {
-      
-      // Generate a mock OTP
-      const otp = Math.floor(100000 + Math.random() * 900000);
-      
-      // Send Welcome / OTP Email
-      const message = `
-        <h2>Welcome to ShopNest, ${name}!</h2>
-        <p>Thank you for registering on our platform.</p>
-        <p>Your one-time verification/discount OTP is: <strong>${otp}</strong></p>
-      `;
+      // Invalidate user list cache
+      await delCache('users:all');
 
-      await sendEmail({
-        email: user.email,
-        subject: 'Welcome to ShopNest - Your OTP',
-        message
-      });
+      // Generate OTP and publish user.registered event (welcome worker handles email)
+      const otp = Math.floor(100000 + Math.random() * 900000);
+      await publishMessage('user.registered', { name: user.name, email: user.email, otp });
 
       res.status(201).json({
         _id: user._id,
@@ -74,7 +65,11 @@ const loginUser = async (req, res) => {
 
 const getUsers = async (req, res) => {
   try {
+    const cached = await getCache('users:all');
+    if (cached) return res.json(cached);
+
     const users = await User.find({}).select('-password');
+    await setCache('users:all', users, 120);
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: error.message });
