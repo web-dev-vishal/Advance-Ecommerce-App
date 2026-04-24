@@ -12,13 +12,6 @@ const app = express();
 // --- Security headers (helmet)
 app.use(helmet());
 
-// --- CORS
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  process.env.FRONTEND_URL,
-].filter(Boolean);
-
 app.use(cors({
   origin: (origin, cb) => {
     // allow non-browser requests (Postman, server-to-server) and listed origins
@@ -58,8 +51,7 @@ app.get('/', (_req, res) => {
       orders:    '/api/orders',
       payment:   '/api/payment',
       analytics: '/api/analytics',
-    },
-    docs: 'Import ShopNest_Postman_Collection.json into Postman to explore all endpoints',
+    }
   });
 });
 
