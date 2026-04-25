@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
-const hpp = require('hpp');
 
 const app = express();
 
@@ -24,9 +23,6 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // --- NoSQL injection sanitization
 app.use(mongoSanitize());
-
-// --- HTTP parameter pollution protection
-app.use(hpp());
 
 // --- Routes
 app.use('/api/auth',      require('./routes/authRoutes'));
