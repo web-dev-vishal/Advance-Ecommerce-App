@@ -1,24 +1,45 @@
 const express = require('express');
+const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const hpp = require('hpp');
+
+dotenv.config();
 
 const app = express();
 
-// --- Security headers (helmet)
+// --- Security headers
 app.use(helmet());
+
+// --- CORS
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 app.use(cors({
   origin: (origin, cb) => {
-    // allow non-browser requests (Postman, server-to-server) and listed origins
     if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
 }));
 
-// --- Body parsing with size limit (prevent large payload DoS)
+// --- Raw body capture for Razorpay webhook/verify signature
+// Must be registered BEFORE express.json() so the raw buffer is available
+app.use('/api/payment/verify', express.raw({ type: 'application/json' }));
+
+// --- Body parsing with size limit
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
+// --- NoSQL injection sanitization
+app.use(mongoSanitize());
+
+// --- HTTP parameter pollution protection
+app.use(hpp());
 
 // --- Routes
 app.use('/api/auth',      require('./routes/authRoutes'));
@@ -40,7 +61,8 @@ app.get('/', (_req, res) => {
       orders:    '/api/orders',
       payment:   '/api/payment',
       analytics: '/api/analytics',
-    }
+    },
+    docs: 'Import ShopNest_Postman_Collection.json into Postman to explore all endpoints',
   });
 });
 
@@ -49,7 +71,7 @@ app.use((_req, res) => {
   res.status(404).json({ status: 404, message: 'Route not found' });
 });
 
-// --- Global error handler (never leak stack traces in production)
+// --- Global error handler
 app.use((err, _req, res, _next) => {
   const status = err.status || 500;
   const message = process.env.NODE_ENV === 'production' && status === 500
