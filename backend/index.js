@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const mongoSanitize = require('express-mongo-sanitize');
 
 const app = express();
 
@@ -20,9 +19,6 @@ app.use(cors({
 // --- Body parsing with size limit (prevent large payload DoS)
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-
-// --- NoSQL injection sanitization
-app.use(mongoSanitize());
 
 // --- Routes
 app.use('/api/auth',      require('./routes/authRoutes'));
