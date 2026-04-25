@@ -1,11 +1,8 @@
 const express = require('express');
-const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
-
-dotenv.config();
 
 const app = express();
 

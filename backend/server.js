@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const connectDB = require('./config/db');
 const { connectRedis } = require('./config/redis');
 const { connectRabbitMQ } = require('./config/rabbitmq');
