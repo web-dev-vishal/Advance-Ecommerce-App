@@ -27,10 +27,6 @@ app.use(cors({
   credentials: true,
 }));
 
-// --- Raw body capture for Razorpay webhook/verify signature
-// Must be registered BEFORE express.json() so the raw buffer is available
-app.use('/api/payment/verify', express.raw({ type: 'application/json' }));
-
 // --- Body parsing with size limit
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));

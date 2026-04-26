@@ -36,13 +36,7 @@ const createOrder = async (req, res) => {
 
 const verifyPayment = async (req, res) => {
   try {
-    // Support both raw buffer body (express.raw) and parsed JSON body
-    let body = req.body;
-    if (Buffer.isBuffer(body)) {
-      body = JSON.parse(body.toString('utf8'));
-    }
-
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return res.status(400).json({ message: 'razorpay_order_id, razorpay_payment_id and razorpay_signature are required' });
@@ -55,9 +49,10 @@ const verifyPayment = async (req, res) => {
       .update(payload)
       .digest('hex');
 
-    // Constant-time comparison to prevent timing attacks
-    const sigBuffer = Buffer.from(razorpay_signature, 'hex');
-    const expBuffer = Buffer.from(expectedSign, 'hex');
+    // Compare hex strings directly using constant-time comparison
+    // Both are always the same length (64-char hex), so timingSafeEqual never throws
+    const sigBuffer = Buffer.from(razorpay_signature, 'utf8');
+    const expBuffer = Buffer.from(expectedSign, 'utf8');
 
     const isValid =
       sigBuffer.length === expBuffer.length &&

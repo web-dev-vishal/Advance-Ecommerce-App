@@ -1,5 +1,14 @@
 require('dotenv').config();
 
+// --- Startup env var validation
+const REQUIRED_ENV = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`[Startup] Missing required env var: ${key}`);
+    process.exit(1);
+  }
+}
+
 const connectDB = require('./config/db');
 const { connectRedis } = require('./config/redis');
 const { connectRabbitMQ } = require('./config/rabbitmq');
