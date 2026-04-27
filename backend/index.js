@@ -31,6 +31,19 @@ app.use(cors({
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
+// --- Patch req.query to be writable (Express 5 defines it as read-only getter;
+//     express-mongo-sanitize v2.x does a direct assignment which throws without this)
+function patchQueryWritable(req, _res, next) {
+  Object.defineProperty(req, 'query', {
+    value: req.query,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+  next();
+}
+app.use(patchQueryWritable);
+
 // --- NoSQL injection sanitization
 app.use(mongoSanitize());
 

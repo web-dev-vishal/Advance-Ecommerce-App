@@ -11,8 +11,8 @@ const start = async () => {
   channel.consume('payment.verified', async (msg) => {
     if (!msg) return;
     try {
-      const { razorpay_order_id, razorpay_payment_id, timestamp } = JSON.parse(msg.content.toString());
-      console.log('[PaymentAudit]', { orderId: razorpay_order_id, paymentId: razorpay_payment_id, timestamp });
+      const { razorpay_order_id, razorpay_payment_id, orderId, timestamp } = JSON.parse(msg.content.toString());
+      console.log('[PaymentAudit]', { orderId, razorpay_order_id, razorpay_payment_id, timestamp });
       channel.ack(msg);
     } catch (err) {
       console.error('[Worker:paymentAuditWorker] Error processing message:', err.message);

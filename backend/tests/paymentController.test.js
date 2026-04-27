@@ -1,12 +1,9 @@
 'use strict';
 
 /**
- * Unit Tests — verifyPayment and createOrder edge cases
+ * Unit Tests — createOrder, confirmPayment, verifyPayment
  *
- * Task 3.2: verifyPayment edge cases
- * Task 3.3: createOrder edge cases
- *
- * Validates: Requirements 2.2, 2.3, 2.4, 3.1, 3.2, 3.3, 3.4
+ * Validates: Requirements 1.1, 1.2, 1.3, 2.1–2.8, 3.1–3.7, 4.1–4.6
  */
 
 const crypto = require('crypto');
@@ -22,230 +19,271 @@ jest.mock('../utils/cache', () => ({
   setCache: jest.fn().mockResolvedValue(undefined),
 }));
 
-// Mock Razorpay constructor and orders.create
 const mockOrdersCreate = jest.fn();
-jest.mock('razorpay', () => {
-  return jest.fn().mockImplementation(() => ({
+const mockPaymentsFetch = jest.fn();
+jest.mock('razorpay', () =>
+  jest.fn().mockImplementation(() => ({
     orders: { create: mockOrdersCreate },
-  }));
-});
+    payments: { fetch: mockPaymentsFetch },
+  }))
+);
+
+const mockFindOne = jest.fn();
+const mockFindByIdAndUpdate = jest.fn();
+jest.mock('../models/Order', () => ({
+  findOne: (...args) => mockFindOne(...args),
+  findByIdAndUpdate: (...args) => mockFindByIdAndUpdate(...args),
+}));
 
 // Set env vars before loading the controller
-process.env.RAZORPAY_KEY_SECRET = 'test_secret_key';
 process.env.RAZORPAY_KEY_ID = 'test_key_id';
+process.env.RAZORPAY_KEY_SECRET = 'test_secret_key';
 
-const { verifyPayment, createOrder } = require('../controllers/paymentController');
+const { createOrder, confirmPayment, verifyPayment } = require('../controllers/paymentController');
 const { publishMessage } = require('../config/rabbitmq');
 const { getCache, setCache } = require('../utils/cache');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildReqRes(bodyOverrides = {}) {
+function makeRes() {
   const result = { statusCode: null, body: null };
-
-  const req = {
-    body: {
-      razorpay_order_id: 'order_test123',
-      razorpay_payment_id: 'pay_test456',
-      razorpay_signature: 'some_signature',
-      ...bodyOverrides,
-    },
-  };
-
   const res = {
-    status(code) {
-      result.statusCode = code;
-      return res;
-    },
-    json(data) {
-      result.body = data;
-      return res;
-    },
+    status(code) { result.statusCode = code; return res; },
+    json(data) { result.body = data; return res; },
   };
-
-  return { req, res, result };
+  return { res, result };
 }
 
-function computeValidSignature(orderId, paymentId) {
+function computeValidSig(orderId, paymentId) {
   return crypto
     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
     .update(`${orderId}|${paymentId}`)
     .digest('hex');
 }
 
-// ── Reset mocks between tests ─────────────────────────────────────────────────
-
 beforeEach(() => {
   jest.clearAllMocks();
 });
 
-// ── Task 3.2: verifyPayment unit tests ────────────────────────────────────────
+// ── createOrder ───────────────────────────────────────────────────────────────
 
-describe('verifyPayment — malformed signature edge cases', () => {
-  test('razorpay_signature = "" → 400, no throw', async () => {
-    const { req, res, result } = buildReqRes({ razorpay_signature: '' });
-
-    await expect(verifyPayment(req, res)).resolves.not.toThrow();
-
+describe('createOrder — input validation', () => {
+  test('missing orderId → 400', async () => {
+    const { res, result } = makeRes();
+    await createOrder({ body: {}, user: { _id: 'u1' } }, res);
     expect(result.statusCode).toBe(400);
+    expect(result.body.message).toMatch(/orderId/);
   });
 
-  test('razorpay_signature = "zz" (non-hex) → 400, no throw', async () => {
-    const { req, res, result } = buildReqRes({ razorpay_signature: 'zz' });
-
-    await expect(verifyPayment(req, res)).resolves.not.toThrow();
-
-    expect(result.statusCode).toBe(400);
-  });
-
-  test('razorpay_signature = "abc" (odd-length) → 400, no throw', async () => {
-    const { req, res, result } = buildReqRes({ razorpay_signature: 'abc' });
-
-    await expect(verifyPayment(req, res)).resolves.not.toThrow();
-
+  test('orderId is number → 400', async () => {
+    const { res, result } = makeRes();
+    await createOrder({ body: { orderId: 123 }, user: { _id: 'u1' } }, res);
     expect(result.statusCode).toBe(400);
   });
 });
 
-describe('verifyPayment — missing required fields', () => {
-  test('missing razorpay_order_id → 400 with validation message', async () => {
-    const { req, res, result } = buildReqRes({ razorpay_order_id: undefined });
-
-    await verifyPayment(req, res);
-
-    expect(result.statusCode).toBe(400);
-    expect(result.body.message).toMatch(/razorpay_order_id/);
+describe('createOrder — order lookup', () => {
+  test('order not found → 404', async () => {
+    mockFindOne.mockResolvedValue(null);
+    const { res, result } = makeRes();
+    await createOrder({ body: { orderId: '64abc' }, user: { _id: 'u1' } }, res);
+    expect(result.statusCode).toBe(404);
+    expect(result.body.message).toBe('Order not found');
   });
 
-  test('missing razorpay_payment_id → 400 with validation message', async () => {
-    const { req, res, result } = buildReqRes({ razorpay_payment_id: undefined });
-
-    await verifyPayment(req, res);
-
+  test('order status not Pending → 400', async () => {
+    mockFindOne.mockResolvedValue({ status: 'Shipped', totalAmount: 100 });
+    const { res, result } = makeRes();
+    await createOrder({ body: { orderId: '64abc' }, user: { _id: 'u1' } }, res);
     expect(result.statusCode).toBe(400);
-    expect(result.body.message).toMatch(/razorpay_payment_id/);
+    expect(result.body.message).toBe('Order is not in a payable state');
+    expect(mockOrdersCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('createOrder — dedup cache', () => {
+  test('cache hit → returns cached order, Razorpay not called', async () => {
+    mockFindOne.mockResolvedValue({ status: 'Pending', totalAmount: 500 });
+    const cached = { id: 'order_cached', amount: 50000 };
+    getCache.mockResolvedValue(cached);
+
+    const { res, result } = makeRes();
+    await createOrder({ body: { orderId: '64abc' }, user: { _id: 'u1' } }, res);
+
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toEqual(cached);
+    expect(mockOrdersCreate).not.toHaveBeenCalled();
   });
 
-  test('missing razorpay_signature → 400 with validation message', async () => {
-    const { req, res, result } = buildReqRes({ razorpay_signature: undefined });
+  test('cache miss → calls Razorpay with correct amount, caches result', async () => {
+    mockFindOne.mockResolvedValue({ status: 'Pending', totalAmount: 500 });
+    getCache.mockResolvedValue(null);
+    const newOrder = { id: 'order_new', amount: 50000, currency: 'INR' };
+    mockOrdersCreate.mockResolvedValue(newOrder);
 
-    await verifyPayment(req, res);
+    const { res, result } = makeRes();
+    await createOrder({ body: { orderId: '64abc' }, user: { _id: 'u1' } }, res);
 
+    expect(mockOrdersCreate).toHaveBeenCalledWith({
+      amount: 50000,
+      currency: 'INR',
+      receipt: '64abc',
+    });
+    expect(setCache).toHaveBeenCalledWith('payment:dedup:u1:64abc', newOrder, 600);
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toEqual(newOrder);
+  });
+});
+
+describe('createOrder — Razorpay error', () => {
+  test('Razorpay throws → 502', async () => {
+    mockFindOne.mockResolvedValue({ status: 'Pending', totalAmount: 100 });
+    getCache.mockResolvedValue(null);
+    mockOrdersCreate.mockRejectedValue(new Error('Razorpay down'));
+
+    const { res, result } = makeRes();
+    await createOrder({ body: { orderId: '64abc' }, user: { _id: 'u1' } }, res);
+
+    expect(result.statusCode).toBe(502);
+    expect(result.body.message).toBe('Payment provider error');
+  });
+});
+
+// ── confirmPayment ────────────────────────────────────────────────────────────
+
+describe('confirmPayment — input validation', () => {
+  const base = { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', orderId: '64abc' };
+
+  test.each(['razorpay_order_id', 'razorpay_payment_id', 'orderId'])(
+    'missing %s → 400',
+    async (field) => {
+      const body = { ...base, [field]: undefined };
+      const { res, result } = makeRes();
+      await confirmPayment({ body, user: { _id: 'u1' } }, res);
+      expect(result.statusCode).toBe(400);
+      expect(result.body.message).toContain(field);
+    }
+  );
+});
+
+describe('confirmPayment — Razorpay fetch', () => {
+  test('fetch throws → 502', async () => {
+    mockPaymentsFetch.mockRejectedValue(new Error('network'));
+    const { res, result } = makeRes();
+    await confirmPayment({
+      body: { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', orderId: '64abc' },
+      user: { _id: 'u1' },
+    }, res);
+    expect(result.statusCode).toBe(502);
+  });
+
+  test('status not captured/authorized → 402', async () => {
+    mockPaymentsFetch.mockResolvedValue({ status: 'failed' });
+    const { res, result } = makeRes();
+    await confirmPayment({
+      body: { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', orderId: '64abc' },
+      user: { _id: 'u1' },
+    }, res);
+    expect(result.statusCode).toBe(402);
+    expect(result.body.status).toBe('failed');
+  });
+});
+
+describe('confirmPayment — order update', () => {
+  test('order not found → 404', async () => {
+    mockPaymentsFetch.mockResolvedValue({ status: 'captured' });
+    mockFindByIdAndUpdate.mockResolvedValue(null);
+    const { res, result } = makeRes();
+    await confirmPayment({
+      body: { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', orderId: '64abc' },
+      user: { _id: 'u1' },
+    }, res);
+    expect(result.statusCode).toBe(404);
+  });
+
+  test('success → 200, publishMessage called with orderId', async () => {
+    mockPaymentsFetch.mockResolvedValue({ status: 'captured' });
+    mockFindByIdAndUpdate.mockResolvedValue({ _id: '64abc', paymentId: 'pay_1' });
+    const { res, result } = makeRes();
+    await confirmPayment({
+      body: { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', orderId: '64abc' },
+      user: { _id: 'u1' },
+    }, res);
+    expect(result.statusCode).toBe(200);
+    expect(result.body.message).toBe('Payment confirmed');
+    expect(publishMessage).toHaveBeenCalledWith('payment.verified', expect.objectContaining({
+      razorpay_order_id: 'ord_1',
+      razorpay_payment_id: 'pay_1',
+      orderId: '64abc',
+      timestamp: expect.any(String),
+    }));
+  });
+
+  test('authorized status also succeeds → 200', async () => {
+    mockPaymentsFetch.mockResolvedValue({ status: 'authorized' });
+    mockFindByIdAndUpdate.mockResolvedValue({ _id: '64abc' });
+    const { res, result } = makeRes();
+    await confirmPayment({
+      body: { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', orderId: '64abc' },
+      user: { _id: 'u1' },
+    }, res);
+    expect(result.statusCode).toBe(200);
+  });
+});
+
+// ── verifyPayment ─────────────────────────────────────────────────────────────
+
+describe('verifyPayment — missing fields', () => {
+  const base = { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', razorpay_signature: 'a'.repeat(64) };
+
+  test.each(['razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature'])(
+    'missing %s → 400',
+    async (field) => {
+      const body = { ...base, [field]: undefined };
+      const { res, result } = makeRes();
+      await verifyPayment({ body }, res);
+      expect(result.statusCode).toBe(400);
+      expect(result.body.message).toMatch(new RegExp(field));
+    }
+  );
+});
+
+describe('verifyPayment — malformed signature', () => {
+  test.each([
+    ['empty string', ''],
+    ['non-hex "zz"', 'zz'],
+    ['odd-length "abc"', 'abc'],
+    ['63 chars', 'a'.repeat(63)],
+    ['65 chars', 'a'.repeat(65)],
+    ['unicode', '🔑'.repeat(16)],
+  ])('%s → 400, no throw', async (_, sig) => {
+    const { res, result } = makeRes();
+    await expect(
+      verifyPayment({ body: { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', razorpay_signature: sig } }, res)
+    ).resolves.not.toThrow();
     expect(result.statusCode).toBe(400);
-    expect(result.body.message).toMatch(/razorpay_signature/);
   });
 });
 
 describe('verifyPayment — signature matching', () => {
-  test('correct HMAC-SHA256 signature → 200, publishMessage called with correct payload', async () => {
-    const orderId = 'order_test123';
-    const paymentId = 'pay_test456';
-    const validSig = computeValidSignature(orderId, paymentId);
-
-    const { req, res, result } = buildReqRes({
-      razorpay_order_id: orderId,
-      razorpay_payment_id: paymentId,
-      razorpay_signature: validSig,
-    });
-
-    await verifyPayment(req, res);
-
+  test('valid HMAC → 200, publishMessage called', async () => {
+    const sig = computeValidSig('ord_1', 'pay_1');
+    const { res, result } = makeRes();
+    await verifyPayment({ body: { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', razorpay_signature: sig } }, res);
     expect(result.statusCode).toBe(200);
     expect(result.body.message).toBe('Payment verified successfully');
-    expect(publishMessage).toHaveBeenCalledTimes(1);
-    expect(publishMessage).toHaveBeenCalledWith('payment.verified', {
-      razorpay_order_id: orderId,
-      razorpay_payment_id: paymentId,
+    expect(publishMessage).toHaveBeenCalledWith('payment.verified', expect.objectContaining({
+      razorpay_order_id: 'ord_1',
+      razorpay_payment_id: 'pay_1',
       timestamp: expect.any(String),
-    });
+    }));
   });
 
-  test('valid 64-char hex that does not match → 400, publishMessage not called', async () => {
-    const wrongSig = 'b'.repeat(64);
-
-    const { req, res, result } = buildReqRes({ razorpay_signature: wrongSig });
-
-    await verifyPayment(req, res);
-
+  test('valid 64-char hex but wrong HMAC → 400', async () => {
+    const { res, result } = makeRes();
+    await verifyPayment({ body: { razorpay_order_id: 'ord_1', razorpay_payment_id: 'pay_1', razorpay_signature: 'b'.repeat(64) } }, res);
     expect(result.statusCode).toBe(400);
     expect(result.body.message).toBe('Invalid payment signature');
     expect(publishMessage).not.toHaveBeenCalled();
-  });
-});
-
-// ── Task 3.3: createOrder unit tests ─────────────────────────────────────────
-
-describe('createOrder — invalid amount', () => {
-  test('amount = 0 → 400 "Valid amount is required"', async () => {
-    const result = { statusCode: null, body: null };
-    const req = { body: { amount: 0 }, user: { _id: 'user123' } };
-    const res = {
-      status(code) { result.statusCode = code; return res; },
-      json(data) { result.body = data; return res; },
-    };
-
-    await createOrder(req, res);
-
-    expect(result.statusCode).toBe(400);
-    expect(result.body.message).toBe('Valid amount is required');
-    expect(mockOrdersCreate).not.toHaveBeenCalled();
-  });
-
-  test('amount = -5 → 400 "Valid amount is required"', async () => {
-    const result = { statusCode: null, body: null };
-    const req = { body: { amount: -5 }, user: { _id: 'user123' } };
-    const res = {
-      status(code) { result.statusCode = code; return res; },
-      json(data) { result.body = data; return res; },
-    };
-
-    await createOrder(req, res);
-
-    expect(result.statusCode).toBe(400);
-    expect(result.body.message).toBe('Valid amount is required');
-    expect(mockOrdersCreate).not.toHaveBeenCalled();
-  });
-});
-
-describe('createOrder — cache behaviour', () => {
-  test('valid amount, cache hit → returns cached order, Razorpay SDK not called', async () => {
-    const cachedOrder = { id: 'order_cached', amount: 50000, currency: 'INR' };
-    getCache.mockResolvedValue(cachedOrder);
-
-    const result = { statusCode: null, body: null };
-    const req = { body: { amount: 500 }, user: { _id: 'user123' } };
-    const res = {
-      status(code) { result.statusCode = code; return res; },
-      json(data) { result.body = data; return res; },
-    };
-
-    await createOrder(req, res);
-
-    expect(result.body).toEqual(cachedOrder);
-    expect(mockOrdersCreate).not.toHaveBeenCalled();
-  });
-
-  test('valid amount, cache miss → calls Razorpay SDK, caches result, returns order', async () => {
-    const newOrder = { id: 'order_new', amount: 50000, currency: 'INR' };
-    getCache.mockResolvedValue(null);
-    mockOrdersCreate.mockResolvedValue(newOrder);
-
-    const result = { statusCode: null, body: null };
-    const req = { body: { amount: 500 }, user: { _id: 'user123' } };
-    const res = {
-      status(code) { result.statusCode = code; return res; },
-      json(data) { result.body = data; return res; },
-    };
-
-    await createOrder(req, res);
-
-    expect(mockOrdersCreate).toHaveBeenCalledTimes(1);
-    expect(mockOrdersCreate).toHaveBeenCalledWith({ amount: 50000, currency: 'INR' });
-    expect(setCache).toHaveBeenCalledWith(
-      expect.stringContaining('payment:dedup:user123:50000'),
-      newOrder,
-      600
-    );
-    expect(result.body).toEqual(newOrder);
   });
 });
